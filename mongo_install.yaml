@@ -1,0 +1,71 @@
+- hosts: mongo
+  become: yes
+  gather_subset:
+  - min
+
+
+  pre_tasks:
+  
+
+  - name: Устанавливаем зависимости
+    apt:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - gnupg
+    - dirmngr
+    - python3-pymongo
+
+  - name: Download MongoDB GPG key
+    shell: "curl -fsSL https://pgp.mongodb.com/server-6.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-archive-keyring.gpg --dearmor"
+    args:
+      executable: /bin/bash
+
+  - name: Add MongoDB repository
+    apt_repository:
+      repo: "deb [ signed-by=/usr/share/keyrings/mongodb-archive-keyring.gpg ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/6.0 multiverse"
+      state: present
+
+  - name: Update apt cache
+    apt:
+      update_cache: yes
+
+  - name: Install MongoDB
+    apt:
+      name: mongodb-org
+      state: present
+
+  - name: Ensure mongo is enabled running
+    service:
+      name: mongod
+      enabled: yes
+      state: started
+
+  post_tasks:
+
+  - name: Create MongoDB user
+    community.mongodb.mongodb_user:
+      database: admin
+      name: elma365
+      password: SecretPassword
+      roles:
+        - { role: "readWrite", db: "elma365" }
+        - { role: "root", db: "admin" }
+      state: present
+
+  - name: Update config MongoDB
+    ansible.builtin.lineinfile:
+      path: /etc/mongodb.conf
+      regexp: "{{ item.regexp }}"
+      line: "{{ item.line }}"
+    with_items:
+      - { regexp: "^net\\.port:", line: "net.port: 27017" }
+      - { regexp: "^net\\.bindIp:", line: "net.bindIp: 0.0.0.0" }
+      - { regexp: "^replication\\.replSetName:", line: "replication.replSetName: \"rs0\"" }
+      - { regexp: "^replication\\.enableMajorityReadConcern:", line: "replication.enableMajorityReadConcern: true" }
+
+  - name: Restart MongoDB
+    service:
+      name: mongod
+      state: restarted
+
