@@ -1,0 +1,110 @@
+- hosts: sql
+  become: yes
+  gather_subset:
+  - min
+
+  vars:
+    pg_version: 10
+
+
+  pre_tasks:
+
+  - name: Add postgresql apt repository key
+    apt_key:
+      url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+      state: present
+
+  - name: Add Postgres repo to sources list
+    apt_repository:
+      repo: >-
+        deb http://apt.postgresql.org/pub/repos/apt/  {{ ansible_distribution_release }}-pgdg main
+      state: present
+    become: true
+
+  - name: Install python-psycopg2
+    apt:
+      name: python3-psycopg2
+      state: present
+
+  tasks:
+
+  - name: Install postgresql dependens
+    apt:
+      name: acl
+      state: present
+
+  - name: Install postgresql
+    apt:
+      name: postgresql-10
+      state: present
+      update_cache: yes
+
+  - name: Ensure postgresql is enabled running
+    service:
+      name: postgresql
+      enabled: yes
+      state: started
+
+  post_tasks:
+
+  - name: Create user
+    become: yes
+    become_user: postgres
+    postgresql_user:
+      name: elma365
+      password: SecretPassword
+    changed_when: false
+
+
+
+  - name: Create DB
+    become: yes
+    become_user: postgres
+    postgresql_query:
+      db: postgres
+      query: CREATE DATABASE elma365 OWNER elma365
+      autocommit: yes
+
+
+  - name: Add extensions
+    become: yes
+    become_user: postgres
+    postgresql_query:
+      db: elma365
+      query: CREATE EXTENSION "uuid-ossp"; CREATE EXTENSION pg_trgm;
+
+  - name: Configure PostgreSQL listen address
+    lineinfile:
+      path: /etc/postgresql/10/main/postgresql.conf
+      regexp: '^listen_addresses ='
+      line: "listen_addresses = 'localhost, {{ ansible_host }}'"
+
+  - name: Add line to pg_hba.conf
+    lineinfile:
+      path: /etc/postgresql/10/main/pg_hba.conf
+      line: 'host all all 192.168.0.0/16 md5'
+      insertafter: EOF
+
+  - name: Restart PostgreSQL
+    service:
+      name: postgresql
+      state: restarted
+
+  - name: Configure PostgreSQL connetions
+    lineinfile:
+      path: /etc/postgresql/10/main/postgresql.conf
+      regexp: '^max_connections ='
+      line: "max_connections = '2000'"
+
+
+  - name: Configure PostgreSQL limits
+    lineinfile:
+      path: /etc/postgresql/10/main/postgresql.conf
+      regexp: '^#max_locks_per_transaction ='
+      line: "max_locks_per_transaction = 512"
+
+
+  - name: Restart PostgreSQL
+    service:
+      name: postgresql
+      state: restarted
